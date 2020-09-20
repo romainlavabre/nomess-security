@@ -1,0 +1,21 @@
+{
+    "name": "nomess/security",
+    "description": "Security package for nomess",
+    "type": "library",
+    "require": {
+        "nomess/config": "^1.0",
+        "nomess/orm": "^1.0",
+        "nomess/parser": "^1.0"
+    },
+    "authors": [
+        {
+            "name": "Romain Lavabre",
+            "email": "webmaster@newwebsouth.fr"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Nomess\\Component\\Security\\": "/"
+        }
+    }
+}

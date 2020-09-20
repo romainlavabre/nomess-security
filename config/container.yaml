@@ -1,0 +1,4 @@
+Nomess\Component\Security\User\UserInterface: Nomess\Component\Security\User\GetUser
+Nomess\Component\Security\Validator\CredentialsValidatorInterface: Nomess\Component\Security\SecurityValidator
+Nomess\Component\Security\Validator\PasswordHandlerInterface: Nomess\Component\Security\Validator\PasswordHandler
+Nomess\Event\EventSubscriberInterface: Nomess\Component\Security\IntercepterHandler
