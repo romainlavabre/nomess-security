@@ -8,14 +8,13 @@ use Nomess\Component\Config\ConfigStoreInterface;
 use Nomess\Component\Orm\EntityManagerInterface;
 use Nomess\Component\Parameter\ParameterStoreInterface;
 use Nomess\Component\Security\User\SecurityUser;
+use Nomess\Exception\MissingConfigurationException;
 use Nomess\Http\HttpRequest;
 use Nomess\Http\HttpSession;
 
 class SecurityValidator implements CredentialsValidatorInterface
 {
     
-    private const PARAM_USERNAME                         = 'username';
-    private const PARAM_PASSWORD                         = 'password';
     private const DEFAULT_ERROR_MESSAGE_PARAMETERS       = 'missing_parameter';
     private const DEFAULT_ERROR_MESSAGE_USER_NOT_FOUND   = 'user_not_found';
     private const DEFAULT_ERROR_MESSAGE_INVALID_PASSWORD = 'invalid_password';
@@ -49,13 +48,15 @@ class SecurityValidator implements CredentialsValidatorInterface
     
     public function isValidCredential( string $classname ): bool
     {
-        $username      = $this->request->getParameter( self::PARAM_USERNAME, HttpRequest::STRING_NULL );
-        $password      = $this->request->getParameter( self::PARAM_PASSWORD, HttpRequest::STRING_NULL );
         $configuration = $this->configStore->get( self::CONFIG_NAME );
+        $this->validUserSupported( $classname, $configuration);
         
-        if( $this->isValidParameters( $username, $password ) ) {
+        $username      = $this->request->getParameter( $configuration['users'][$classname]['request']['identifier'], HttpRequest::STRING_NULL );
+        $password      = $this->request->getParameter( $configuration['users'][$classname]['request']['password'], HttpRequest::STRING_NULL );
+        
+        if( !$this->isValidParameters( $username, $password ) ) {
             $this->error = $configuration['security']['messages'][self::DEFAULT_ERROR_MESSAGE_PARAMETERS];
-            
+            $this->request->setError( $this->error);
             return FALSE;
         }
         
@@ -63,7 +64,7 @@ class SecurityValidator implements CredentialsValidatorInterface
         
         if( empty( $user ) ) {
             $this->error = $configuration['security']['messages'][self::DEFAULT_ERROR_MESSAGE_USER_NOT_FOUND];
-            
+            $this->request->setError( $this->error);
             return FALSE;
         }
         
@@ -82,16 +83,25 @@ class SecurityValidator implements CredentialsValidatorInterface
         return $this->error;
     }
     
-    
-    private function getUser( string $classname, string $username ): ?SecurityUser
+    public function addUser(SecurityUser $securityUser): self
     {
-        return $this->entityManager->find( $classname, 'username = :username', [
-            'username' => $username
-        ] );
+        $this->persist( $securityUser);
+        
+        return $this;
     }
     
     
-    private function isValidParameters( string $username, string $password ): bool
+    private function getUser( string $classname, string $username ): ?SecurityUser
+    {
+        $result = $this->entityManager->find( $classname, 'username = :username', [
+            'username' => $username
+        ] );
+        
+        return is_array( $result) ? $result[0] : NULL;
+    }
+    
+    
+    private function isValidParameters( ?string $username, ?string $password ): bool
     {
         return !empty( $username ) && !empty( $password );
     }
@@ -101,5 +111,12 @@ class SecurityValidator implements CredentialsValidatorInterface
     {
         $this->session->installSecurityModules( TRUE, TRUE, FALSE )
                       ->set( 'security_user', $securityUser );
+    }
+    
+    private function validUserSupported(string $classname, array $configuration): void
+    {
+        if(!array_key_exists( $classname, $configuration['users'])){
+            throw new MissingConfigurationException('The user ' . $classname . '::class is not configured in security component');
+        }
     }
 }

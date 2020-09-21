@@ -15,6 +15,9 @@ security:<br>
 users:<br>
     &nbsp;&nbsp;&nbsp;&nbsp;App\Entity\User:<br>
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;algorithm: default<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;request:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;identifier: username<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;password: password
 <br>
 roles:<br>
     &nbsp;&nbsp;&nbsp;&nbsp;ROLE_ADMIN:<br>

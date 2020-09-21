@@ -69,24 +69,52 @@ class IntercepterHandler implements EventSubscriberInterface
             $roles[] = $isGranted;
         }
         
+        if( empty( $roles ) ) {
+            return;
+        }
+        
+        $securityUser = $this->user->getUser();
+        
+        if( !empty( $roles ) && empty( $securityUser ) ) {
+            $this->response->redirectToLocal(
+                $this->configStore->get( self::CONF_NAME )['security']['redirect_to_route'],
+                [
+                    'unauthoratized' => TRUE
+                ]
+            );
+        }
+        
+        $isAuthorized = NULL;
+        
         foreach( $roles as $role ) {
+            $this->validSupportedRole( $role );
+            
             if( $this->hasRole( $this->user->getUser(), $role ) ) {
-                return;
+                if( $isAuthorized === NULL ) {
+                    $isAuthorized = TRUE;
+                }
+            } else {
+                $isAuthorized = FALSE;
             }
+        }
+        
+        if( $isAuthorized ) {
+            return;
         }
         
         $this->response->redirectToLocal(
             $this->configStore->get( self::CONF_NAME )['security']['redirect_to_route']
         );
-        die();
     }
     
     
     private function getRouteRoleByConfig(): array
     {
         $result = [];
+        
         foreach( $this->configStore->get( self::CONF_NAME )['roles'] as $role => $configuration ) {
-            if( preg_match( '/' . $configuration['route'] . '/', $_GET['p'] ) ) {
+            if( array_key_exists( 'route', $configuration )
+                && preg_match( '/' . $configuration['route'] . '/', $_GET['p'] ) ) {
                 $result[] = $role;
             }
         }
@@ -95,7 +123,7 @@ class IntercepterHandler implements EventSubscriberInterface
     }
     
     
-    private function getRouteByController( array $entryPoint ): ?string
+    private function getRouteByController( ?array $entryPoint ): ?string
     {
         if( !empty( $entryPoint ) ) {
             $reflectionMethod = new \ReflectionMethod( $entryPoint['controller'], $entryPoint['method'] );
@@ -119,6 +147,7 @@ class IntercepterHandler implements EventSubscriberInterface
         }
         
         $supported = FALSE;
+        
         foreach( $securityUser->getRoles() as $userRole ) {
             foreach( $this->configStore->get( self::CONF_NAME )['roles'] as $key => $configuration ) {
                 if( $userRole === $key ) {
@@ -138,5 +167,13 @@ class IntercepterHandler implements EventSubscriberInterface
         }
         
         return FALSE;
+    }
+    
+    
+    private function validSupportedRole( string $role ): void
+    {
+        if( !array_key_exists( $role, $this->configStore->get( self::CONF_NAME )['roles'] ) ) {
+            throw new MissingConfigurationException( 'The role "' . $role . '" was not found in security component configuration' );
+        }
     }
 }
