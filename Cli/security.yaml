@@ -1,0 +1,29 @@
+# All user using this component must extends of Nomess\Component\Security\User\SecurityUser
+security:
+    # Error messages to return
+    messages:
+        missing_parameter: "Merci de renseigner votre identifiant et votre mot de passe"
+        user_not_found: "Vous n'avez pas de compte enregistré"
+        invalid_password: "Mot de passe invalide"
+
+    # If a user needs to be logged in, redirect to...
+    redirect_to_route: login
+
+users:
+    App\Entity\User:
+        # default, bcrypt, argon2i, argon2id
+        algorithm: default
+        request:
+            # Parameters name
+            identifier: _username
+            password: _password
+
+roles:
+    # Role
+    ROLE_ADMIN:
+        extends: []
+        # (Optionnal) by default, this route is protected by this role
+        route: ^user
+    ROLE_USER:
+        extends: []
+

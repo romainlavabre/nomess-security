@@ -46,17 +46,21 @@ class SecurityValidator implements CredentialsValidatorInterface
     }
     
     
+    /**
+     * @inheritDoc
+     */
     public function isValidCredential( string $classname ): bool
     {
         $configuration = $this->configStore->get( self::CONFIG_NAME );
-        $this->validUserSupported( $classname, $configuration);
+        $this->validUserSupported( $classname, $configuration );
         
-        $username      = $this->request->getParameter( $configuration['users'][$classname]['request']['identifier'], HttpRequest::STRING_NULL );
-        $password      = $this->request->getParameter( $configuration['users'][$classname]['request']['password'], HttpRequest::STRING_NULL );
+        $username = $this->request->getParameter( $configuration['users'][$classname]['request']['identifier'], HttpRequest::STRING_NULL );
+        $password = $this->request->getParameter( $configuration['users'][$classname]['request']['password'], HttpRequest::STRING_NULL );
         
         if( !$this->isValidParameters( $username, $password ) ) {
             $this->error = $configuration['security']['messages'][self::DEFAULT_ERROR_MESSAGE_PARAMETERS];
-            $this->request->setError( $this->error);
+            $this->request->setError( $this->error );
+            
             return FALSE;
         }
         
@@ -64,12 +68,16 @@ class SecurityValidator implements CredentialsValidatorInterface
         
         if( empty( $user ) ) {
             $this->error = $configuration['security']['messages'][self::DEFAULT_ERROR_MESSAGE_USER_NOT_FOUND];
-            $this->request->setError( $this->error);
+            $this->request->setError( $this->error );
+            
             return FALSE;
         }
         
         if( !$this->passwordHandler->isValidPassword( $password, $user ) ) {
             $this->error = $configuration['security']['messages'][self::DEFAULT_ERROR_MESSAGE_INVALID_PASSWORD];
+            $this->request->setError( $this->error );
+            
+            return FALSE;
         }
         
         $this->persist( $user );
@@ -78,26 +86,40 @@ class SecurityValidator implements CredentialsValidatorInterface
     }
     
     
+    /**
+     * @inheritDoc
+     */
     public function getError(): ?string
     {
         return $this->error;
     }
     
-    public function addUser(SecurityUser $securityUser): self
+    
+    /**
+     * @inheritDoc
+     */
+    public function addUser( SecurityUser $securityUser ): self
     {
-        $this->persist( $securityUser);
+        $this->persist( $securityUser );
         
         return $this;
     }
     
     
+    /**
+     * Return the good user
+     *
+     * @param string $classname
+     * @param string $username
+     * @return SecurityUser|null
+     */
     private function getUser( string $classname, string $username ): ?SecurityUser
     {
         $result = $this->entityManager->find( $classname, 'username = :username', [
             'username' => $username
         ] );
         
-        return is_array( $result) ? $result[0] : NULL;
+        return is_array( $result ) ? $result[0] : NULL;
     }
     
     
@@ -107,16 +129,24 @@ class SecurityValidator implements CredentialsValidatorInterface
     }
     
     
+    /**
+     * Persist the user in session.
+     * Use the useragent module and ticket system
+     * 
+     * @param SecurityUser $securityUser
+     * @throws \Nomess\Exception\InvalidParamException
+     */
     private function persist( SecurityUser $securityUser ): void
     {
         $this->session->installSecurityModules( TRUE, TRUE, FALSE )
                       ->set( 'security_user', $securityUser );
     }
     
-    private function validUserSupported(string $classname, array $configuration): void
+    
+    private function validUserSupported( string $classname, array $configuration ): void
     {
-        if(!array_key_exists( $classname, $configuration['users'])){
-            throw new MissingConfigurationException('The user ' . $classname . '::class is not configured in security component');
+        if( !array_key_exists( $classname, $configuration['users'] ) ) {
+            throw new MissingConfigurationException( 'The user ' . $classname . '::class is not configured in security component' );
         }
     }
 }

@@ -5,7 +5,9 @@
     "require": {
         "nomess/config": "^1.0",
         "nomess/orm": "^1.0",
-        "nomess/parser": "^1.0"
+        "nomess/parser": "^1.0",
+        "nomess/kernel": "*",
+        "nomess/cli": "*"
     },
     "authors": [
         {

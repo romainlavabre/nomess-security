@@ -16,11 +16,13 @@ use Nomess\Exception\MissingConfigurationException;
 use Nomess\Exception\NotFoundException;
 use NoMess\Exception\UnsupportedEventException;
 use Nomess\Http\HttpResponse;
+use Nomess\Initiator\Route\RouteHandlerInterface;
 
 class IntercepterHandler implements EventSubscriberInterface
 {
     
-    private const CONF_NAME = 'security';
+    private const CONF_NAME       = 'security';
+    private const ANNOTATION_NAME = 'IsGranted';
     private AnnotationParserInterface $annotationParser;
     private ConfigStoreInterface      $configStore;
     private UserInterface             $user;
@@ -73,8 +75,8 @@ class IntercepterHandler implements EventSubscriberInterface
             return;
         }
         
-        $securityUser = $this->user->getUser();
-        
+        $securityUser = $this->user->getUser(FALSE);
+    
         if( !empty( $roles ) && empty( $securityUser ) ) {
             $this->response->redirectToLocal(
                 $this->configStore->get( self::CONF_NAME )['security']['redirect_to_route'],
@@ -82,6 +84,7 @@ class IntercepterHandler implements EventSubscriberInterface
                     'unauthoratized' => TRUE
                 ]
             );
+            die();
         }
         
         $isAuthorized = NULL;
@@ -89,7 +92,7 @@ class IntercepterHandler implements EventSubscriberInterface
         foreach( $roles as $role ) {
             $this->validSupportedRole( $role );
             
-            if( $this->hasRole( $this->user->getUser(), $role ) ) {
+            if( $this->hasRole( $this->user->getUser(FALSE), $role ) ) {
                 if( $isAuthorized === NULL ) {
                     $isAuthorized = TRUE;
                 }
@@ -114,7 +117,7 @@ class IntercepterHandler implements EventSubscriberInterface
         
         foreach( $this->configStore->get( self::CONF_NAME )['roles'] as $role => $configuration ) {
             if( array_key_exists( 'route', $configuration )
-                && preg_match( '/' . $configuration['route'] . '/', $_GET['p'] ) ) {
+                && preg_match( '/' . $configuration['route'] . '/', $_SERVER['REQUEST_URI'] ) ) {
                 $result[] = $role;
             }
         }
@@ -126,10 +129,10 @@ class IntercepterHandler implements EventSubscriberInterface
     private function getRouteByController( ?array $entryPoint ): ?string
     {
         if( !empty( $entryPoint ) ) {
-            $reflectionMethod = new \ReflectionMethod( $entryPoint['controller'], $entryPoint['method'] );
+            $reflectionMethod = new \ReflectionMethod( $entryPoint[RouteHandlerInterface::CONTROLLER], $entryPoint[RouteHandlerInterface::METHOD] );
             
-            if( $this->annotationParser->has( 'isGranted', $reflectionMethod ) ) {
-                $value = $this->annotationParser->getValue( 'isGranted', $reflectionMethod );
+            if( $this->annotationParser->has( self::ANNOTATION_NAME, $reflectionMethod ) ) {
+                $value = $this->annotationParser->getValue( self::ANNOTATION_NAME, $reflectionMethod );
                 
                 return current( $value );
             }

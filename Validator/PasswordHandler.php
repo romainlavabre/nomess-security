@@ -26,12 +26,18 @@ class PasswordHandler implements PasswordHandlerInterface
     }
     
     
+    /**
+     * @inheritDoc
+     */
     public function isValidPassword( string $password, SecurityUser $securityUser ): bool
     {
         return password_verify( $password, $securityUser->getPassword() );
     }
     
     
+    /**
+     * @inheritDoc
+     */
     public function encode( $password, SecurityUser $securityUser ): bool
     {
         $securityUser->setPassword( password_hash( $password, $this->getAlgorithm( $securityUser ) ) );
