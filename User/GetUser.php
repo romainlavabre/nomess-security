@@ -5,41 +5,26 @@ namespace Nomess\Component\Security\User;
 
 
 use Nomess\Component\Orm\EntityManagerInterface;
-use Nomess\Http\HttpSession;
+use Nomess\Component\Security\Provider\UserProviderInterface;
 
 class GetUser implements UserInterface
 {
     
-    private const INDEX_SESSION = 'security_user';
-    private HttpSession            $session;
+    private UserProviderInterface  $userProvider;
     private EntityManagerInterface $entityManager;
     
     
     public function __construct(
-        HttpSession $session,
+        UserProviderInterface $userProvider,
         EntityManagerInterface $entityManager )
     {
-        $this->session       = $session;
+        $this->userProvider  = $userProvider;
         $this->entityManager = $entityManager;
     }
     
     
-    public function getUser( bool $reload = TRUE ): ?SecurityUser
+    public function getUser(): ?SecurityUser
     {
-        if( $this->session->has( self::INDEX_SESSION ) ) {
-            
-            /** @var SecurityUser $securityUser */
-            $securityUser = $this->session->get( self::INDEX_SESSION );
-            
-            if( $reload ) {
-                $this->entityManager->find( get_class( $securityUser ), 'username = :username', [
-                    'username' => $securityUser->getUsername()
-                ] );
-            }
-            
-            return $securityUser;
-        }
-        
-        return NULL;
+        return $this->entityManager->find( $this->userProvider->getClassname(), $this->userProvider->getIdentifier() );
     }
 }

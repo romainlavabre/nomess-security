@@ -11,6 +11,8 @@ use Nomess\Component\Security\Cli\EncodeRole;
 use Nomess\Component\Security\Cli\InsertUser;
 use Nomess\Component\Security\Cli\Installer;
 use Nomess\Component\Security\Intercepter\IntercepterHandler;
+use Nomess\Component\Security\Provider\UserProvider;
+use Nomess\Component\Security\Provider\UserProviderInterface;
 use Nomess\Component\Security\User\GetUser;
 use Nomess\Component\Security\User\UserInterface;
 use Nomess\Component\Security\Validator\CredentialsValidatorInterface;
@@ -39,7 +41,8 @@ class NomessInstaller implements \Nomess\Installer\NomessInstallerInterface
             UserInterface::class => GetUser::class,
             CredentialsValidatorInterface::class => SecurityValidator::class,
             PasswordHandlerInterface::class => PasswordHandler::class,
-            EventSubscriberInterface::class => IntercepterHandler::class
+            EventSubscriberInterface::class => IntercepterHandler::class,
+            UserProviderInterface::class => UserProvider::class
         ];
     }
     

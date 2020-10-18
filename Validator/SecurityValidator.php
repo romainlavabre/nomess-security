@@ -6,11 +6,10 @@ namespace Nomess\Component\Security\Validator;
 
 use Nomess\Component\Config\ConfigStoreInterface;
 use Nomess\Component\Orm\EntityManagerInterface;
-use Nomess\Component\Parameter\ParameterStoreInterface;
+use Nomess\Component\Security\Provider\UserProviderInterface;
 use Nomess\Component\Security\User\SecurityUser;
 use Nomess\Exception\MissingConfigurationException;
 use Nomess\Http\HttpRequest;
-use Nomess\Http\HttpSession;
 
 class SecurityValidator implements CredentialsValidatorInterface
 {
@@ -21,28 +20,25 @@ class SecurityValidator implements CredentialsValidatorInterface
     private const CONFIG_NAME                            = 'security';
     private EntityManagerInterface   $entityManager;
     private ConfigStoreInterface     $configStore;
-    private ParameterStoreInterface  $parameterStore;
     private PasswordHandlerInterface $passwordHandler;
     private HttpRequest              $request;
-    private HttpSession              $session;
+    private UserProviderInterface    $userProvider;
     private ?string                  $error = NULL;
     
     
     public function __construct(
         EntityManagerInterface $entityManager,
         ConfigStoreInterface $configStore,
-        ParameterStoreInterface $parameterStore,
         PasswordHandlerInterface $passwordHandler,
         HttpRequest $request,
-        HttpSession $session
+        UserProviderInterface $userProvider
     )
     {
         $this->entityManager   = $entityManager;
         $this->configStore     = $configStore;
-        $this->parameterStore  = $parameterStore;
         $this->passwordHandler = $passwordHandler;
         $this->request         = $request;
-        $this->session         = $session;
+        $this->userProvider    = $userProvider;
     }
     
     
@@ -58,7 +54,7 @@ class SecurityValidator implements CredentialsValidatorInterface
         $password = $this->request->getParameter( $configuration['users'][$classname]['request']['password'], HttpRequest::STRING_NULL );
         
         if( !$this->isValidParameters( $username, $password ) ) {
-            $this->error = $configuration['security']['messages'][self::DEFAULT_ERROR_MESSAGE_PARAMETERS];
+            $this->error = $configuration['users'][$classname]['messages'][self::DEFAULT_ERROR_MESSAGE_PARAMETERS];
             $this->request->setError( $this->error );
             
             return FALSE;
@@ -66,21 +62,21 @@ class SecurityValidator implements CredentialsValidatorInterface
         
         $user = $this->getUser( $classname, $username );
         
-        if( empty( $user ) ) {
-            $this->error = $configuration['security']['messages'][self::DEFAULT_ERROR_MESSAGE_USER_NOT_FOUND];
+        if( $user === NULL ) {
+            $this->error = $configuration['users'][$classname]['messages'][self::DEFAULT_ERROR_MESSAGE_USER_NOT_FOUND];
             $this->request->setError( $this->error );
             
             return FALSE;
         }
         
         if( !$this->passwordHandler->isValidPassword( $password, $user ) ) {
-            $this->error = $configuration['security']['messages'][self::DEFAULT_ERROR_MESSAGE_INVALID_PASSWORD];
+            $this->error = $configuration['users'][$classname]['messages'][self::DEFAULT_ERROR_MESSAGE_INVALID_PASSWORD];
             $this->request->setError( $this->error );
             
             return FALSE;
         }
         
-        $this->persist( $user );
+        $this->addUser( $user );
         
         return TRUE;
     }
@@ -100,7 +96,7 @@ class SecurityValidator implements CredentialsValidatorInterface
      */
     public function addUser( SecurityUser $securityUser ): self
     {
-        $this->persist( $securityUser );
+        $this->userProvider->clientRegister( $securityUser );
         
         return $this;
     }
@@ -130,19 +126,10 @@ class SecurityValidator implements CredentialsValidatorInterface
     
     
     /**
-     * Persist the user in session.
-     * Use the useragent module and ticket system
-     * 
-     * @param SecurityUser $securityUser
-     * @throws \Nomess\Exception\InvalidParamException
+     * @param string $classname
+     * @param array $configuration
+     * @throws MissingConfigurationException
      */
-    private function persist( SecurityUser $securityUser ): void
-    {
-        $this->session->installSecurityModules( TRUE, TRUE, FALSE )
-                      ->set( 'security_user', $securityUser );
-    }
-    
-    
     private function validUserSupported( string $classname, array $configuration ): void
     {
         if( !array_key_exists( $classname, $configuration['users'] ) ) {

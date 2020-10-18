@@ -7,7 +7,8 @@
         "nomess/orm": "^1.0",
         "nomess/parser": "^1.0",
         "nomess/kernel": "*",
-        "nomess/cli": "*"
+        "nomess/cli": "*",
+        "firebase/php-jwt": "^5.2"
     },
     "authors": [
         {

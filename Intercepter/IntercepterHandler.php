@@ -4,18 +4,21 @@
 namespace Nomess\Component\Security\Intercepter;
 
 
-use Nomess\Component\Cache\Exception\InvalidSendException;
+use Nomess\Annotations\Inject;
 use Nomess\Component\Config\ConfigStoreInterface;
 use Nomess\Component\Config\Exception\ConfigurationNotFoundException;
 use Nomess\Component\Parser\AnnotationParserInterface;
-use Nomess\Component\Security\User\SecurityUser;
-use Nomess\Component\Security\User\UserInterface;
+use Nomess\Component\Security\Exception\SecurityException;
+use Nomess\Component\Security\Provider\UserProviderInterface;
+use Nomess\Container\Container;
 use Nomess\Event\EventListenerInterface;
 use Nomess\Event\EventSubscriberInterface;
 use Nomess\Exception\MissingConfigurationException;
 use Nomess\Exception\NotFoundException;
 use NoMess\Exception\UnsupportedEventException;
+use Nomess\Http\HttpHeader;
 use Nomess\Http\HttpResponse;
+use Nomess\Http\HttpSession;
 use Nomess\Initiator\Route\RouteHandlerInterface;
 
 class IntercepterHandler implements EventSubscriberInterface
@@ -25,26 +28,26 @@ class IntercepterHandler implements EventSubscriberInterface
     private const ANNOTATION_NAME = 'IsGranted';
     private AnnotationParserInterface $annotationParser;
     private ConfigStoreInterface      $configStore;
-    private UserInterface             $user;
     private HttpResponse              $response;
+    private UserProviderInterface     $userProvider;
     
     
     public function __construct(
         AnnotationParserInterface $annotationParser,
         ConfigStoreInterface $configStore,
-        UserInterface $user,
-        HttpResponse $response
+        HttpResponse $response,
+        UserProviderInterface $userProvider
     )
     {
         $this->annotationParser = $annotationParser;
         $this->configStore      = $configStore;
-        $this->user             = $user;
         $this->response         = $response;
+        $this->userProvider     = $userProvider;
     }
     
     
     /**
-     * @Inject
+     * @Inject()
      * @param EventListenerInterface $eventListener
      * @throws UnsupportedEventException
      */
@@ -58,76 +61,49 @@ class IntercepterHandler implements EventSubscriberInterface
      * @param string $event
      * @param $value
      * @throws MissingConfigurationException
-     * @throws InvalidSendException
      * @throws ConfigurationNotFoundException
      * @throws NotFoundException
      */
     public function notified( string $event, $value ): void
     {
-        $roles     = $this->getRouteRoleByConfig();
-        $isGranted = $this->getRouteByController( $value );
+        $confName     = $this->getRouteConfiguration();
+        $roleRequired = $this->configStore->get( self::CONF_NAME )['route'][$confName]['role'] ?? NULL;
+        $isGranted    = $this->getRouteByController( $value );
         
-        if( !empty( $isGranted ) ) {
-            $roles[] = $isGranted;
-        }
-        
-        if( empty( $roles ) ) {
+        if( $roleRequired === NULL && $isGranted === NULL ) {
             return;
         }
         
-        $securityUser = $this->user->getUser(FALSE);
-    
-        if( !empty( $roles ) && empty( $securityUser ) ) {
-            $this->response->redirectToLocal(
-                $this->configStore->get( self::CONF_NAME )['security']['redirect_to_route'],
-                [
-                    'unauthoratized' => TRUE
-                ]
-            );
-            die();
-        }
-        
-        $isAuthorized = NULL;
-        
-        foreach( $roles as $role ) {
-            $this->validSupportedRole( $role );
+        if( !$this->userProvider->hasSecurityUser() ) {
+            if( $confName !== NULL ) {
+                $this->response->redirectToLocal(
+                    $this->configStore->get( self::CONF_NAME )['route'][$confName]['redirect_to_route'],
+                    [],
+                    HttpHeader::HTTP_UNAUTHORIZED
+                )->stop();
+            }
             
-            if( $this->hasRole( $this->user->getUser(FALSE), $role ) ) {
-                if( $isAuthorized === NULL ) {
-                    $isAuthorized = TRUE;
-                }
-            } else {
-                $isAuthorized = FALSE;
-            }
+            $this->response->response_code( HttpHeader::HTTP_UNAUTHORIZED )
+                           ->stop();
         }
         
-        if( $isAuthorized ) {
-            return;
-        }
         
-        $this->response->redirectToLocal(
-            $this->configStore->get( self::CONF_NAME )['security']['redirect_to_route'],
-            [],
-            401
-        );
+        if( ( $roleRequired !== NULL && !$this->userHasRole( $roleRequired ) )
+            || ( $isGranted !== NULL && !$this->userHasRole( $isGranted ) ) ) {
+            
+            $this->response->response_code( HttpHeader::HTTP_UNAUTHORIZED )
+                           ->stop();
+        }
     }
     
     
-    private function getRouteRoleByConfig(): array
-    {
-        $result = [];
-        
-        foreach( $this->configStore->get( self::CONF_NAME )['roles'] as $role => $configuration ) {
-            if( array_key_exists( 'route', $configuration )
-                && preg_match( '/' . $configuration['route'] . '/', $_SERVER['REQUEST_URI'] ) ) {
-                $result[] = $role;
-            }
-        }
-        
-        return $result;
-    }
-    
-    
+    /**
+     * @param array|null $entryPoint
+     * @return string|null
+     * @throws ConfigurationNotFoundException
+     * @throws SecurityException
+     * @throws \ReflectionException
+     */
     private function getRouteByController( ?array $entryPoint ): ?string
     {
         if( !empty( $entryPoint ) ) {
@@ -136,7 +112,11 @@ class IntercepterHandler implements EventSubscriberInterface
             if( $this->annotationParser->has( self::ANNOTATION_NAME, $reflectionMethod ) ) {
                 $value = $this->annotationParser->getValue( self::ANNOTATION_NAME, $reflectionMethod );
                 
-                return current( $value );
+                $role = current( $value );
+                
+                if( !array_key_exists( $role, $this->configStore->get( self::CONF_NAME )['roles'] ) ) {
+                    throw new SecurityException( 'The role required for "' . $reflectionMethod->getDeclaringClass()->getName() . '::' . $reflectionMethod->getName() . '" has not found is configuration' );
+                }
             }
         }
         
@@ -144,41 +124,24 @@ class IntercepterHandler implements EventSubscriberInterface
     }
     
     
-    private function hasRole( SecurityUser $securityUser, string $role ): bool
+    private function userHasRole( string $role ): bool
     {
-        
-        if( in_array( $role, $securityUser->getRoles() ) ) {
-            return TRUE;
-        }
-        
-        $supported = FALSE;
-        
-        foreach( $securityUser->getRoles() as $userRole ) {
-            foreach( $this->configStore->get( self::CONF_NAME )['roles'] as $key => $configuration ) {
-                if( $userRole === $key ) {
-                    if( in_array( $role, $configuration['extends'] ) ) {
-                        return TRUE;
-                    }
-                }
-                
-                if( $key === $role ) {
-                    $supported = TRUE;
-                }
-            }
-        }
-        
-        if( !$supported ) {
-            throw new MissingConfigurationException( 'The role ' . $role . ' was not found in configuration' );
-        }
-        
-        return FALSE;
+        return in_array( $role, $this->userProvider->getRoles(), TRUE );
     }
     
     
-    private function validSupportedRole( string $role ): void
+    private function getRouteConfiguration(): ?string
     {
-        if( !array_key_exists( $role, $this->configStore->get( self::CONF_NAME )['roles'] ) ) {
-            throw new MissingConfigurationException( 'The role "' . $role . '" was not found in security component configuration' );
+        foreach( $this->configStore->get( self::CONF_NAME )['route'] as $name => $configuration ) {
+            if( ( !isset( $configuration['exclude'] ) || !preg_match( '/' . str_replace( '/', '\/', $configuration['exclude'] ) . '/', $_SERVER['REQUEST_URI'] ) )
+                && ( ( NOMESS_CONTEXT === 'DEV' && $configuration['security_dev'] )
+                     || ( NOMESS_CONTEXT === 'PROD' && $configuration['security_prod'] ) )
+                && preg_match( '/' . str_replace('/', '\/', $configuration['path']) . '/', $_SERVER['REQUEST_URI'] ) ) {
+                
+                return $name;
+            }
         }
+        
+        return NULL;
     }
 }
